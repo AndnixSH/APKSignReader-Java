@@ -7,7 +7,7 @@ A modified [apksig](https://github.com/AndnixSH/apksig) tool to read signature f
 - Windows/Linux/macOS (Only tested on Windows)
 
 ### Usage
-`java -jar apksig.jar (apk file)`
+`java -jar APKSignReader.jar (apk file)`
 
 ![Screenshot](https://i.imgur.com/ELs1UUh.png)
 
