@@ -49,7 +49,7 @@
   &quot;keyToString&quot;: {
     &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;E:/Mobile-Modding/Java/apksig/src/main/java/com/android/apksigner/help_verify.txt&quot;,
+    &quot;last_opened_file_path&quot;: &quot;E:/Github/BlackObfuscator&quot;,
     &quot;project.structure.last.edited&quot;: &quot;Project&quot;,
     &quot;project.structure.proportion&quot;: &quot;0.15&quot;,
     &quot;project.structure.side.proportion&quot;: &quot;0.2&quot;,
@@ -57,10 +57,10 @@
   }
 }</component>
   <component name="RunManager">
-    <configuration name="ApkSignerTool" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
+    <configuration name="com.android.apksigner.ApkSignerTool" type="Application" factoryName="Application" temporary="true" nameIsGenerated="true">
       <option name="MAIN_CLASS_NAME" value="com.android.apksigner.ApkSignerTool" />
       <module name="apksig.main" />
-      <option name="PROGRAM_PARAMETERS" value="&quot;E:\Android apps and games\Crash Fever\Crash Fever_6.7.1.10_mod_signed.apk&quot;" />
+      <option name="PROGRAM_PARAMETERS" value="&quot;E:\Android apps and games\Crash Fever\Crash Fever_6.7.1.10_apkcombo.com.apk&quot;" />
       <extension name="coverage">
         <pattern>
           <option name="PATTERN" value="com.android.apksigner.*" />
@@ -71,9 +71,22 @@
         <option name="Make" enabled="true" />
       </method>
     </configuration>
+    <configuration default="true" type="JetRunConfigurationType">
+      <module name="apksig.main" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
+    <configuration default="true" type="KotlinStandaloneScriptRunConfigurationType">
+      <module name="apksig.main" />
+      <option name="filePath" />
+      <method v="2">
+        <option name="Make" enabled="true" />
+      </method>
+    </configuration>
     <recent_temporary>
       <list>
-        <item itemvalue="Application.ApkSignerTool" />
+        <item itemvalue="Application.com.android.apksigner.ApkSignerTool" />
       </list>
     </recent_temporary>
   </component>
