@@ -17,11 +17,14 @@
 package com.android.apksig;
 
 import static com.android.apksig.apk.ApkUtils.SOURCE_STAMP_CERTIFICATE_HASH_ZIP_ENTRY_NAME;
+import static com.android.apksig.internal.apk.v3.V3SchemeConstants.MIN_SDK_WITH_V31_SUPPORT;
+import static com.android.apksig.internal.apk.v3.V3SchemeConstants.MIN_SDK_WITH_V3_SUPPORT;
 
 import com.android.apksig.apk.ApkFormatException;
 import com.android.apksig.apk.ApkSigningBlockNotFoundException;
 import com.android.apksig.apk.ApkUtils;
 import com.android.apksig.apk.MinSdkVersionException;
+import com.android.apksig.internal.apk.v3.V3SchemeConstants;
 import com.android.apksig.internal.util.ByteBufferDataSource;
 import com.android.apksig.internal.zip.CentralDirectoryRecord;
 import com.android.apksig.internal.zip.EocdRecord;
@@ -81,6 +84,8 @@ public class ApkSigner {
 
     private static final short ANDROID_COMMON_PAGE_ALIGNMENT_BYTES = 4096;
 
+    private static final short ANDROID_FILE_ALIGNMENT_BYTES = 4096;
+
     /** Name of the Android manifest ZIP entry in APKs. */
     private static final String ANDROID_MANIFEST_ZIP_ENTRY_NAME = "AndroidManifest.xml";
 
@@ -89,10 +94,13 @@ public class ApkSigner {
     private final SigningCertificateLineage mSourceStampSigningCertificateLineage;
     private final boolean mForceSourceStampOverwrite;
     private final Integer mMinSdkVersion;
+    private final int mRotationMinSdkVersion;
+    private final boolean mRotationTargetsDevRelease;
     private final boolean mV1SigningEnabled;
     private final boolean mV2SigningEnabled;
     private final boolean mV3SigningEnabled;
     private final boolean mV4SigningEnabled;
+    private final boolean mAlignFileSize;
     private final boolean mVerityEnabled;
     private final boolean mV4ErrorReportingEnabled;
     private final boolean mDebuggableApkPermitted;
@@ -118,10 +126,13 @@ public class ApkSigner {
             SigningCertificateLineage sourceStampSigningCertificateLineage,
             boolean forceSourceStampOverwrite,
             Integer minSdkVersion,
+            int rotationMinSdkVersion,
+            boolean rotationTargetsDevRelease,
             boolean v1SigningEnabled,
             boolean v2SigningEnabled,
             boolean v3SigningEnabled,
             boolean v4SigningEnabled,
+            boolean alignFileSize,
             boolean verityEnabled,
             boolean v4ErrorReportingEnabled,
             boolean debuggableApkPermitted,
@@ -141,10 +152,13 @@ public class ApkSigner {
         mSourceStampSigningCertificateLineage = sourceStampSigningCertificateLineage;
         mForceSourceStampOverwrite = forceSourceStampOverwrite;
         mMinSdkVersion = minSdkVersion;
+        mRotationMinSdkVersion = rotationMinSdkVersion;
+        mRotationTargetsDevRelease = rotationTargetsDevRelease;
         mV1SigningEnabled = v1SigningEnabled;
         mV2SigningEnabled = v2SigningEnabled;
         mV3SigningEnabled = v3SigningEnabled;
         mV4SigningEnabled = v4SigningEnabled;
+        mAlignFileSize = alignFileSize;
         mVerityEnabled = verityEnabled;
         mV4ErrorReportingEnabled = v4ErrorReportingEnabled;
         mDebuggableApkPermitted = debuggableApkPermitted;
@@ -296,7 +310,9 @@ public class ApkSigner {
                             .setVerityEnabled(mVerityEnabled)
                             .setDebuggableApkPermitted(mDebuggableApkPermitted)
                             .setOtherSignersSignaturesPreserved(mOtherSignersSignaturesPreserved)
-                            .setSigningCertificateLineage(mSigningCertificateLineage);
+                            .setSigningCertificateLineage(mSigningCertificateLineage)
+                            .setMinSdkVersionForRotation(mRotationMinSdkVersion)
+                            .setRotationTargetsDevRelease(mRotationTargetsDevRelease);
             if (mCreatedBy != null) {
                 signerEngineBuilder.setCreatedBy(mCreatedBy);
             }
@@ -579,6 +595,9 @@ public class ApkSigner {
         int outputCentralDirRecordCount = outputCdRecords.size();
 
         // Step 10. Construct output ZIP End of Central Directory record in an in-memory buffer
+        // because it can be adjusted in Step 11 due to signing block.
+        //   - CD offset (it's shifted by signing block)
+        //   - Comments (when the output file needs to be sized 4k-aligned)
         ByteBuffer outputEocd =
                 EocdRecord.createWithModifiedCentralDirectoryInfo(
                         inputZipSections.getZipEndOfCentralDirectory(),
@@ -597,13 +616,39 @@ public class ApkSigner {
 
         if (outputApkSigningBlockRequest != null) {
             int padding = outputApkSigningBlockRequest.getPaddingSizeBeforeApkSigningBlock();
-            outputApkOut.consume(ByteBuffer.allocate(padding));
             byte[] outputApkSigningBlock = outputApkSigningBlockRequest.getApkSigningBlock();
+            outputApkSigningBlockRequest.done();
+
+            long fileSize =
+                    outputCentralDirStartOffset
+                            + outputCentralDirDataSource.size()
+                            + padding
+                            + outputApkSigningBlock.length
+                            + outputEocd.remaining();
+            if (mAlignFileSize && (fileSize % ANDROID_FILE_ALIGNMENT_BYTES != 0)) {
+                int eocdPadding =
+                        (int)
+                                (ANDROID_FILE_ALIGNMENT_BYTES
+                                        - fileSize % ANDROID_FILE_ALIGNMENT_BYTES);
+                // Replace EOCD with padding one so that output file size can be the multiples of
+                // alignment.
+                outputEocd = EocdRecord.createWithPaddedComment(outputEocd, eocdPadding);
+
+                // Since EoCD has changed, we need to regenerate signing block as well.
+                outputApkSigningBlockRequest =
+                        signerEngine.outputZipSections2(
+                                outputApkIn,
+                                new ByteBufferDataSource(outputCentralDir),
+                                DataSources.asDataSource(outputEocd));
+                outputApkSigningBlock = outputApkSigningBlockRequest.getApkSigningBlock();
+                outputApkSigningBlockRequest.done();
+            }
+
+            outputApkOut.consume(ByteBuffer.allocate(padding));
             outputApkOut.consume(outputApkSigningBlock, 0, outputApkSigningBlock.length);
             ZipUtils.setZipEocdCentralDirectoryOffset(
                     outputEocd,
                     outputCentralDirStartOffset + padding + outputApkSigningBlock.length);
-            outputApkSigningBlockRequest.done();
         }
 
         // Step 12. Output ZIP Central Directory and ZIP End of Central Directory
@@ -1087,12 +1132,15 @@ public class ApkSigner {
         private boolean mV2SigningEnabled = true;
         private boolean mV3SigningEnabled = true;
         private boolean mV4SigningEnabled = true;
+        private boolean mAlignFileSize = false;
         private boolean mVerityEnabled = false;
         private boolean mV4ErrorReportingEnabled = false;
         private boolean mDebuggableApkPermitted = true;
         private boolean mOtherSignersSignaturesPreserved;
         private String mCreatedBy;
         private Integer mMinSdkVersion;
+        private int mRotationMinSdkVersion = V3SchemeConstants.DEFAULT_ROTATION_MIN_SDK_VERSION;
+        private boolean mRotationTargetsDevRelease = false;
 
         private final ApkSignerEngine mSignerEngine;
 
@@ -1301,6 +1349,58 @@ public class ApkSigner {
         }
 
         /**
+         * Sets the minimum Android platform version (API Level) for which an APK's rotated signing
+         * key should be used to produce the APK's signature. The original signing key for the APK
+         * will be used for all previous platform versions. If a rotated key with signing lineage is
+         * not provided then this method is a noop. This method is useful for overriding the
+         * default behavior where Android T is set as the minimum API level for rotation.
+         *
+         * <p><em>Note:</em>Specifying a {@code minSdkVersion} value <= 32 (Android Sv2) will result
+         * in the original V3 signing block being used without platform targeting.
+         *
+         * <p><em>Note:</em> This method may only be invoked when this builder is not initialized
+         * with an {@link ApkSignerEngine}.
+         *
+         * @throws IllegalStateException if this builder was initialized with an {@link
+         *     ApkSignerEngine}
+         */
+        public Builder setMinSdkVersionForRotation(int minSdkVersion) {
+            checkInitializedWithoutEngine();
+            // If the provided SDK version does not support v3.1, then use the default SDK version
+            // with rotation support.
+            if (minSdkVersion < MIN_SDK_WITH_V31_SUPPORT) {
+                mRotationMinSdkVersion = MIN_SDK_WITH_V3_SUPPORT;
+            } else {
+                mRotationMinSdkVersion = minSdkVersion;
+            }
+            return this;
+        }
+
+        /**
+         * Sets whether the rotation-min-sdk-version is intended to target a development release;
+         * this is primarily required after the T SDK is finalized, and an APK needs to target U
+         * during its development cycle for rotation.
+         *
+         * <p>This is only required after the T SDK is finalized since S and earlier releases do
+         * not know about the V3.1 block ID, but once T is released and work begins on U, U will
+         * use the SDK version of T during development. Specifying a rotation-min-sdk-version of T's
+         * SDK version along with setting {@code enabled} to true will allow an APK to use the
+         * rotated key on a device running U while causing this to be bypassed for T.
+         *
+         * <p><em>Note:</em>If the rotation-min-sdk-version is less than or equal to 32 (Android
+         * Sv2), then the rotated signing key will be used in the v3.0 signing block and this call
+         * will be a noop.
+         *
+         * <p><em>Note:</em> This method may only be invoked when this builder is not initialized
+         * with an {@link ApkSignerEngine}.
+         */
+        public Builder setRotationTargetsDevRelease(boolean enabled) {
+            checkInitializedWithoutEngine();
+            mRotationTargetsDevRelease = enabled;
+            return this;
+        }
+
+        /**
          * Sets whether the APK should be signed using JAR signing (aka v1 signature scheme).
          *
          * <p>By default, whether APK is signed using JAR signing is determined by {@code
@@ -1408,6 +1508,21 @@ public class ApkSigner {
         public Builder setV4ErrorReportingEnabled(boolean enabled) {
             checkInitializedWithoutEngine();
             mV4ErrorReportingEnabled = enabled;
+            return this;
+        }
+
+       /**
+         * Sets whether the output APK files should be sized as multiples of 4K.
+         *
+         * <p><em>Note:</em> This method may only be invoked when this builder is not initialized
+         * with an {@link ApkSignerEngine}.
+         *
+         * @throws IllegalStateException if this builder was initialized with an {@link
+         *     ApkSignerEngine}
+         */
+        public Builder setAlignFileSize(boolean alignFileSize) {
+            checkInitializedWithoutEngine();
+            mAlignFileSize = alignFileSize;
             return this;
         }
 
@@ -1538,10 +1653,13 @@ public class ApkSigner {
                     mSourceStampSigningCertificateLineage,
                     mForceSourceStampOverwrite,
                     mMinSdkVersion,
+                    mRotationMinSdkVersion,
+                    mRotationTargetsDevRelease,
                     mV1SigningEnabled,
                     mV2SigningEnabled,
                     mV3SigningEnabled,
                     mV4SigningEnabled,
+                    mAlignFileSize,
                     mVerityEnabled,
                     mV4ErrorReportingEnabled,
                     mDebuggableApkPermitted,

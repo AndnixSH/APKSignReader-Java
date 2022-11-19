@@ -1,0 +1,11 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="apksigner:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/apksigner_jar</output-path>
+    <root id="archive" name="apksigner.jar">
+      <element id="module-output" name="apksigner" />
+      <element id="module-output" name="APKSignReader-Java.main" />
+      <element id="extracted-dir" path="D:/.gradle/caches/modules-2/files-2.1/org.conscrypt/conscrypt-openjdk-uber/2.5.2/d858f142ea189c62771c505a6548d8606ac098fe/conscrypt-openjdk-uber-2.5.2.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="D:/.gradle/caches/modules-2/files-2.1/com.google.protobuf/protobuf-javalite/3.20.0/dec76d80e450799d65cdc1f45e4bcbf832dd3880/protobuf-javalite-3.20.0.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>
