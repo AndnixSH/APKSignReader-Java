@@ -10,7 +10,7 @@ When you run it, you may get an error `Exception in thread "main" java.lang.Secu
 
 If you know a permanent fix or the other way to compile, please let me know
 
-![](https://img.shields.io/github/downloads/AndnixSH/APKSignReader-Java/total?style=for-the-badge)](https://github.com/AndnixSH/APKSignReader-Java/releases) 
+[![](https://img.shields.io/github/downloads/AndnixSH/APKSignReader-Java/total?style=for-the-badge)](https://github.com/AndnixSH/APKSignReader-Java/releases)
 
 # apksig
 
